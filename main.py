@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 TOKEN = "8637399765:AAEM-WJizcYZ2kYIrQoNKJovAXZdTgNYNMU"
-ADMIN_ID = 5206039766  # Твой Telegram ID
+ADMIN_ID = 5206039766
 QUIZ_FILE = "quizzes.json"
 
 def load_quizzes():
@@ -24,9 +24,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎯 *Бот викторин*\n\n"
         "/quiz — случайная викторина\n"
         "/stats — сколько викторин в базе\n"
-        "/add ссылка1 ссылка2 ссылка3 — добавить несколько викторин\n\n"
-        "Пример: `/add https://t.me/kanal/123 https://t.me/kanal/456`\n"
-        "Дата и вопрос подставятся автоматически",
+        "/add ссылка1 ссылка2 ссылка3 — добавить несколько викторин",
         parse_mode="Markdown"
     )
 
@@ -37,7 +35,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     q = random.choice(quizzes)
     await update.message.reply_text(
-        f"🎯 *{q['date']}*\n{q['question']}\n\n👉 [Пройти]({q['link']})",
+        f"🎯 *{q['date']}*\n\n👉 [Пройти викторину]({q['link']})",
         parse_mode="Markdown",
         disable_web_page_preview=True
     )
@@ -52,18 +50,10 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if not context.args:
-        await update.message.reply_text(
-            "📎 *Как добавить викторины:*\n"
-            "`/add ссылка1 ссылка2 ссылка3`\n\n"
-            "Пример:\n"
-            "`/add https://t.me/kanal/123 https://t.me/kanal/456`",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("📎 /add ссылка1 ссылка2 ссылка3")
         return
     
-    # Берём все аргументы как ссылки (каждый аргумент — отдельная ссылка)
     links = context.args
-    
     quizzes = load_quizzes()
     today = datetime.now().strftime("%d.%m.%Y")
     added = 0
@@ -80,3 +70,22 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         quizzes.append({
             "link": link,
+            "date": today
+        })
+        added += 1
+    
+    if added:
+        save_quizzes(quizzes)
+        await update.message.reply_text(f"✅ Добавлено викторин: {added}")
+    
+    if errors:
+        await update.message.reply_text("\n".join(errors[:5]))
+
+app = Application.builder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("quiz", quiz))
+app.add_handler(CommandHandler("stats", stats))
+app.add_handler(CommandHandler("add", add))
+
+print("✅ Бот запущен!")
+app.run_polling()
