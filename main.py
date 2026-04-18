@@ -80,23 +80,3 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         quizzes.append({
             "link": link,
-            "date": today,
-            "question": "Викторина"
-        })
-        added += 1
-    
-    if added:
-        save_quizzes(quizzes)
-        await update.message.reply_text(f"✅ Добавлено викторин: {added}")
-    
-    if errors:
-        await update.message.reply_text("\n".join(errors[:5]))
-
-app = Application.builder().token(TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("quiz", quiz))
-app.add_handler(CommandHandler("stats", stats))
-app.add_handler(CommandHandler("add", add))
-
-print("✅ Бот запущен!")
-app.run_polling()
