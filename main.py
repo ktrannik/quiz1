@@ -24,7 +24,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎯 *Бот викторин*\n\n"
         "/quiz — случайная викторина\n"
         "/stats — сколько викторин в базе\n"
-        "/add ссылка1 ссылка2 ссылка3 — добавить несколько викторин",
+        "/add ссылка1 ссылка2 ссылка3 — добавить викторины (только для админа)\n"
+        "/help — помощь",
+        parse_mode="Markdown"
+    )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📖 *Помощь по командам:*\n\n"
+        "/quiz — получить случайную викторину\n"
+        "/stats — показать количество викторин в базе\n"
+        "/add — добавить новые викторины (доступно только админу)\n\n"
+        "📎 *Как добавить викторины:*\n"
+        "`/add https://t.me/канал/123 https://t.me/канал/456`\n\n"
+        "Викторины сохраняются с сегодняшней датой.\n"
+        "Бот работает 24/7, первая команда после простоя может быть долгой (15-30 сек).",
         parse_mode="Markdown"
     )
 
@@ -50,7 +64,13 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if not context.args:
-        await update.message.reply_text("📎 /add ссылка1 ссылка2 ссылка3")
+        await update.message.reply_text(
+            "📎 *Как добавить викторины:*\n"
+            "`/add ссылка1 ссылка2 ссылка3`\n\n"
+            "Пример:\n"
+            "`/add https://t.me/kanal/123 https://t.me/kanal/456`",
+            parse_mode="Markdown"
+        )
         return
     
     links = context.args
@@ -83,6 +103,7 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 app = Application.builder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("help", help_command))
 app.add_handler(CommandHandler("quiz", quiz))
 app.add_handler(CommandHandler("stats", stats))
 app.add_handler(CommandHandler("add", add))
