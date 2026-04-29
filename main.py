@@ -159,6 +159,10 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ===== ОБРАБОТЧИК ПЕРЕСЛАННЫХ ПОСТОВ =====
 async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Игнорируем пересылки в группах / каналах
+    if update.message.chat.type != "private":
+        return
+    
     if not update.message.forward_origin:
         await update.message.reply_text("❌ Перешлите пост из канала")
         return
@@ -187,17 +191,14 @@ async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Пытаемся получить реальную дату поста
     post_date = None
     try:
-        # Способ 1: прямая дата из forward_origin (если есть)
         if hasattr(update.message, 'forward_date') and update.message.forward_date:
             from datetime import datetime as dt
             post_date = dt.fromtimestamp(update.message.forward_date).strftime("%Y-%m-%d")
     except:
         pass
     
-    # Если даты нет — сегодняшняя
     if not post_date:
         post_date = datetime.now().strftime("%Y-%m-%d")
-        await update.message.reply_text(f"⚠️ Не удалось определить дату поста, установлена сегодняшняя: {post_date}")
     
     link = f"https://t.me/{channel_username}/{post_id}"
     text = update.message.caption or ""
