@@ -72,12 +72,19 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+
 async def donate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("💳 Поддержать разработку", url="https://finance.ozon.ru/apps/sbp/ozonbankpay/019da166-0117-7486-83c4-ba6b6a587f43")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await update.message.reply_text(
         "💸 *Поддержать разработку бота*\n\n"
-        "СБП по номеру телефона: `+7 900 123 45 67`\n\n"
+        "Если тебе нравятся викторины и ты хочешь помочь с развитием — можешь отправить донат.\n\n"
         "Спасибо за поддержку! ❤️",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
+        reply_markup=reply_markup
     )
 
 async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
