@@ -220,14 +220,14 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "start_time": time.time()
     }
 
-    keyboard = [[InlineKeyboardButton("⏳ Станет доступно через 15 сек", callback_data="dummy")]]
+    keyboard = [[InlineKeyboardButton("⏳ Станет доступно через 5 сек", callback_data="dummy")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
         f"🎯 *Викторина от {q['date']}*\n\n"
         f"👉 [Пройти викторину]({q['link']})\n\n"
-        f"✅ *Перейди по ссылке, посмотри вопрос* (это займёт 15 секунд).\n"
-        f"Через 15 секунд кнопка станет активной — нажми её, чтобы получить +1 в рейтинг.\n\n"
+        f"✅ *Перейди по ссылке, посмотри вопрос* (это займёт 5 секунд).\n"
+        f"Через 5 секунд кнопка станет активной — нажми её, чтобы получить +1 в рейтинг.\n\n"
         f"*Каждая викторина засчитывается только один раз.*",
         parse_mode="Markdown",
         disable_web_page_preview=True,
@@ -237,7 +237,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     asyncio.create_task(enable_button_after_delay(context, user_id, update.message.chat_id))
 
 async def enable_button_after_delay(context, user_id, chat_id):
-    await asyncio.sleep(15)
+    await asyncio.sleep(5)
     data = user_quiz_timers.get(user_id)
     if data:
         keyboard = [[InlineKeyboardButton("✅ Я прошёл викторину", callback_data="quiz_completed")]]
@@ -264,9 +264,9 @@ async def quiz_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elapsed = time.time() - data["start_time"]
-    if elapsed < 15:
+    if elapsed < 5:
         await query.edit_message_text(
-            f"⏳ Подожди ещё {15 - int(elapsed)} секунд.\n"
+            f"⏳ Подожди ещё {5 - int(elapsed)} секунд.\n"
             f"Это нужно, чтобы убедиться, что ты действительно перешёл по ссылке."
         )
         return
