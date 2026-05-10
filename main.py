@@ -146,6 +146,17 @@ def load_quizzes():
             {"link": "https://t.me/trassa993/1391", "date": "2026-04-16"}
         ]
 
+# ===== ЗАГРУЗКА МЕМОВ =====
+def load_memes():
+    if not os.path.exists('memes.json'):
+        print("⚠️ Файл memes.json не найден")
+        return []
+    with open('memes.json', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        if isinstance(data, list):
+            return data
+        return []
+
 # ===== ДЕКОРАТОР АНТИСПАМА =====
 def antispam_decorator(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -161,10 +172,13 @@ def antispam_decorator(func):
 # ===== КОМАНДЫ =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🎯 *Тестовый бот викторин*\n\n"
-        "/quiz — случайная викторина\n"
+        "🎯 *Бот викторин*\n\n"
+        "/quiz — случайная викторина (рейтинг)\n"
+        "/fastqz — быстрая викторина (без рейтинга)\n"
+        "/mm — случайный мем\n"
         "/stats — моя статистика\n"
         "/top — топ игроков\n"
+        "/base — количество викторин и мемов\n"
         "/donate — поддержать разработку\n"
         "/help — помощь",
         parse_mode="Markdown"
@@ -173,17 +187,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📖 *Помощь по командам:*\n\n"
-        "/quiz — случайная викторина\n"
-        "/stats — моя статистика\n"
-        "/top — топ игроков\n"
+        "/quiz — случайная викторина (начисляет рейтинг, каждая викторина один раз)\n"
+        "/fastqz — быстрая викторина (без рейтинга, можно проходить сколько угодно раз)\n"
+        "/mm — случайный мем\n"
+        "/stats — моя статистика (аватарка + рейтинг)\n"
+        "/top — топ-10 игроков\n"
+        "/base — сколько викторин и мемов в базе\n"
         "/donate — поддержать разработку\n"
         "/help — это сообщение\n\n"
-        "🎯 *Как получить +1 к рейтингу:*\n"
+        "🎯 *Как получить рейтинг:*\n"
         "1. Напиши /quiz\n"
         "2. Перейди по ссылке на викторину\n"
-        "3. Подожди 15 секунд\n"
+        "3. Подожди 5 секунд\n"
         "4. Нажми «✅ Я прошёл викторину»\n\n"
-        "⚠️ *Антиспам:* не чаще 1 команды в 2 секунды, иначе блокировка.",
+        "⚠️ *Антиспам:* не чаще 1 команды в 2 секунды, иначе блокировка 20 сек.",
         parse_mode="Markdown"
     )
 
@@ -235,7 +252,8 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     asyncio.create_task(enable_button_after_delay(context, user_id, update.message.chat_id))
-    @antispam_decorator
+
+@antispam_decorator
 async def fastqz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     quizzes = load_quizzes()
     if not quizzes:
@@ -246,7 +264,6 @@ async def fastqz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     quiz_id = q["link"].split("/")[-1]
     user_id = update.effective_user.id
 
-    # Отдельный словарь для быстрых викторин
     user_quiz_timers[f"fastqz_{user_id}"] = {
         "quiz_id": quiz_id,
         "link": q["link"],
@@ -271,38 +288,6 @@ async def fastqz(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     asyncio.create_task(enable_button_after_delay_fastqz(context, user_id, update.message.chat_id))
 
-async def fastqz_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-
-    data = user_quiz_timers.get(f"fastqz_{user_id}")
-    if not data:
-        await query.edit_message_text("❌ Ошибка: начни викторину заново (/fastqz)")
-        return
-
-    elapsed = time.time() - data["start_time"]
-    if elapsed < 5:
-        await query.edit_message_text(
-            f"⏳ Подожди ещё {5 - int(elapsed)} секунд.\n"
-            f"Это нужно, чтобы убедиться, что ты действительно перешёл по ссылке."
-        )
-        return
-
-    # Не начисляем баллы, просто подтверждаем
-    await query.edit_message_text(
-        f"✅ *Спасибо за прохождение, {query.from_user.first_name}!*\n\n"
-        f"👉 [Вернуться к викторине]({data['link']})\n\n"
-        f"*Рейтинг не изменился.*\n\n"
-        f"Попробуй ещё одну через /fastqz\n"
-        f"Или сыграй на рейтинг через /quiz",
-        parse_mode="Markdown",
-        disable_web_page_preview=True
-    )
-    # Не удаляем из словаря, чтобы можно было проходить несколько раз
-    # Но перезаписываем время, чтобы не было проблем с таймером
-    data["start_time"] = time.time()
-
 async def enable_button_after_delay(context, user_id, chat_id):
     await asyncio.sleep(5)
     data = user_quiz_timers.get(user_id)
@@ -314,6 +299,23 @@ async def enable_button_after_delay(context, user_id, chat_id):
             text=f"🎯 *Викторина от {data['date']}*\n\n"
                  f"👉 [Пройти викторину]({data['link']})\n\n"
                  f"✅ Кнопка активирована! Нажми, чтобы получить +1 к рейтингу.",
+            parse_mode="Markdown",
+            disable_web_page_preview=True,
+            reply_markup=reply_markup
+        )
+
+async def enable_button_after_delay_fastqz(context, user_id, chat_id):
+    await asyncio.sleep(5)
+    data = user_quiz_timers.get(f"fastqz_{user_id}")
+    if data:
+        keyboard = [[InlineKeyboardButton("✅ Я прошёл викторину", callback_data="fastqz_completed")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"⚡ *Быстрая викторина*\n\n"
+                 f"👉 [Пройти викторину]({data['link']})\n\n"
+                 f"✅ Кнопка активирована! Нажми, чтобы отметить прохождение.\n"
+                 f"*Рейтинг не начисляется.*",
             parse_mode="Markdown",
             disable_web_page_preview=True,
             reply_markup=reply_markup
@@ -342,11 +344,11 @@ async def quiz_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⚠️ Ты уже проходил эту викторину. Попробуй другую через /quiz")
         return
 
-    stats = add_completion(user_id, username, data["quiz_id"])
+    stats_data = add_completion(user_id, username, data["quiz_id"])
     await query.edit_message_text(
         f"✅ *Спасибо за прохождение, {query.from_user.first_name}!*\n\n"
-        f"📊 Всего викторин пройдено: {stats['total']}\n"
-        f"🎖️ Твой ранг: {stats['rank']}\n\n"
+        f"📊 Всего викторин пройдено: {stats_data['total']}\n"
+        f"🎖️ Твой ранг: {stats_data['rank']}\n\n"
         f"👉 [Вернуться к викторине]({data['link']})\n\n"
         f"Попробуй следующую через /quiz",
         parse_mode="Markdown",
@@ -354,19 +356,47 @@ async def quiz_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     del user_quiz_timers[user_id]
 
+async def fastqz_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+
+    data = user_quiz_timers.get(f"fastqz_{user_id}")
+    if not data:
+        await query.edit_message_text("❌ Ошибка: начни викторину заново (/fastqz)")
+        return
+
+    elapsed = time.time() - data["start_time"]
+    if elapsed < 5:
+        await query.edit_message_text(
+            f"⏳ Подожди ещё {5 - int(elapsed)} секунд.\n"
+            f"Это нужно, чтобы убедиться, что ты действительно перешёл по ссылке."
+        )
+        return
+
+    await query.edit_message_text(
+        f"✅ *Спасибо за прохождение, {query.from_user.first_name}!*\n\n"
+        f"👉 [Вернуться к викторине]({data['link']})\n\n"
+        f"*Рейтинг не изменился.*\n\n"
+        f"Попробуй ещё одну через /fastqz\n"
+        f"Или сыграй на рейтинг через /quiz",
+        parse_mode="Markdown",
+        disable_web_page_preview=True
+    )
+    data["start_time"] = time.time()
+
 @antispam_decorator
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     stats_data = get_user_stats(user.id)
     
-    # Пытаемся получить аватарку
     photo = None
     try:
         photos = await context.bot.get_user_profile_photos(user.id, limit=1)
         if photos.total_count > 0:
             photo = photos.photos[0][-1].file_id
     except:
-        pass  # Нет аватарки или ошибка доступа
+        pass
     
     text = (
         f"📊 *Статистика {user.first_name}*:\n\n"
@@ -401,18 +431,6 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(message, parse_mode="Markdown")
 
-# ===== ЗАГРУЗКА МЕМОВ =====
-def load_memes():
-    if not os.path.exists('memes.json'):
-        print("⚠️ Файл memes.json не найден")
-        return []
-    with open('memes.json', 'r', encoding='utf-8') as f:
-        data = json.load(f)
-        if isinstance(data, list):
-            return data
-        return []
-
-# ===== КОМАНДА МЕМОВ =====
 @antispam_decorator
 async def mm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     memes = load_memes()
@@ -422,7 +440,6 @@ async def mm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     m = random.choice(memes)
     
-    # Если в memes.json есть поле img_url — отправляем картинкой
     if 'img_url' in m and m['img_url']:
         await update.message.reply_photo(
             photo=m['img_url'],
@@ -430,23 +447,20 @@ async def mm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
     else:
-        # Если только ссылка
         await update.message.reply_text(
             f"😂 *Мем от {m['date']}*\n\n👉 [Смотреть мем]({m['link']})",
             parse_mode="Markdown",
             disable_web_page_preview=True
         )
-        @antispam_decorator
+
+@antispam_decorator
 async def base(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Загружаем викторины
     quizzes = load_quizzes()
     quiz_count = len(quizzes)
     
-    # Загружаем мемы
     memes = load_memes()
     meme_count = len(memes)
     
-    # Проверяем даты первой и последней викторины (если есть)
     oldest_quiz = None
     newest_quiz = None
     if quiz_count > 0:
@@ -455,7 +469,6 @@ async def base(update: Update, context: ContextTypes.DEFAULT_TYPE):
             oldest_quiz = min(dates)
             newest_quiz = max(dates)
     
-    # Формируем сообщение
     text = (
         f"📦 *База данных бота:*\n\n"
         f"🎯 *Викторин:* {quiz_count}\n"
@@ -478,13 +491,13 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("donate", donate))
     app.add_handler(CommandHandler("quiz", quiz))
-    app.add_handler(CallbackQueryHandler(quiz_completed, pattern="quiz_completed"))
+    app.add_handler(CommandHandler("fastqz", fastqz))
+    app.add_handler(CommandHandler("mm", mm))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("top", top))
-    app.add_handler(CommandHandler("mm", mm))
-    app.add_handler(CommandHandler("fastqz", fastqz))
-    app.add_handler(CallbackQueryHandler(fastqz_completed, pattern="fastqz_completed"))# или другое название команды
     app.add_handler(CommandHandler("base", base))
+    app.add_handler(CallbackQueryHandler(quiz_completed, pattern="quiz_completed"))
+    app.add_handler(CallbackQueryHandler(fastqz_completed, pattern="fastqz_completed"))
     
-    print("✅ Тестовый бот запущен!")
+    print("✅ Бот запущен!")
     app.run_polling()
