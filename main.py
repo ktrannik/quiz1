@@ -51,6 +51,7 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS users
                  (user_id INTEGER PRIMARY KEY,
                   username TEXT,
+                  first_name TEXT,
                   total INTEGER DEFAULT 0,
                   rank TEXT DEFAULT "Новичок")''')
     c.execute('''CREATE TABLE IF NOT EXISTS completions
@@ -70,29 +71,36 @@ def has_completed(user_id, quiz_id):
     conn.close()
     return result is not None
 
-def add_completion(user_id, username, quiz_id):
+def add_completion(user_id, first_name, quiz_id):
     conn = sqlite3.connect('quiz_users.db')
     c = conn.cursor()
     
     c.execute("INSERT OR IGNORE INTO completions (user_id, quiz_id, completed_at) VALUES (?, ?, ?)",
               (user_id, quiz_id, datetime.now()))
     
-    c.execute("SELECT total FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT total, first_name FROM users WHERE user_id = ?", (user_id,))
     user = c.fetchone()
     
     if user:
         new_total = user[0] + 1
         rank = get_rank_by_score(new_total)
-        c.execute("UPDATE users SET username = ?, total = ?, rank = ? WHERE user_id = ?",
-                  (username, new_total, rank, user_id))
+        c.execute("UPDATE users SET first_name = ?, total = ?, rank = ? WHERE user_id = ?",
+                  (first_name, new_total, rank, user_id))
     else:
         rank = get_rank_by_score(1)
-        c.execute("INSERT INTO users (user_id, username, total, rank) VALUES (?, ?, ?, ?)",
-                  (user_id, username, 1, rank))
+        c.execute("INSERT INTO users (user_id, first_name, total, rank) VALUES (?, ?, ?, ?)",
+                  (user_id, first_name, 1, rank))
     
     conn.commit()
     conn.close()
     return get_user_stats(user_id)
+
+def update_user(user_id, first_name):
+    conn = sqlite3.connect('quiz_users.db')
+    c = conn.cursor()
+    c.execute("UPDATE users SET first_name = ? WHERE user_id = ?", (first_name, user_id))
+    conn.commit()
+    conn.close()
 
 def get_user_stats(user_id):
     conn = sqlite3.connect('quiz_users.db')
@@ -103,6 +111,16 @@ def get_user_stats(user_id):
     if result:
         return {"total": result[0], "rank": result[1]}
     return {"total": 0, "rank": "Новичок"}
+
+def get_user_by_id(user_id):
+    conn = sqlite3.connect('quiz_users.db')
+    c = conn.cursor()
+    c.execute("SELECT first_name, total, rank FROM users WHERE user_id = ?", (user_id,))
+    result = c.fetchone()
+    conn.close()
+    if result:
+        return {"first_name": result[0], "total": result[1], "rank": result[2]}
+    return None
 
 def get_rank_by_score(total):
     if total >= 100:
@@ -171,6 +189,10 @@ def antispam_decorator(func):
 
 # ===== КОМАНДЫ =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    first_name = update.effective_user.first_name
+    update_user(user_id, first_name)
+    
     await update.message.reply_text(
         "🎯 *Бот викторин*\n\n"
         "/quiz — случайная викторина (рейтинг)\n"
@@ -328,7 +350,7 @@ async def quiz_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-    username = query.from_user.first_name
+    first_name = query.from_user.first_name
 
     data = user_quiz_timers.get(user_id)
     if not data:
@@ -347,9 +369,8 @@ async def quiz_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⚠️ Ты уже проходил эту викторину. Попробуй другую через /quiz")
         return
 
-    stats_data = add_completion(user_id, username, data["quiz_id"])
+    stats_data = add_completion(user_id, first_name, data["quiz_id"])
     
-    # Убираем кнопки
     try:
         await context.bot.edit_message_reply_markup(
             chat_id=data["chat_id"],
@@ -360,7 +381,7 @@ async def quiz_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
     
     await query.edit_message_text(
-        f"✅ *Спасибо за прохождение, {query.from_user.first_name}!*\n\n"
+        f"✅ *Спасибо за прохождение, {first_name}!*\n\n"
         f"📊 Всего викторин пройдено: {stats_data['total']}\n"
         f"🎖️ Твой ранг: {stats_data['rank']}\n\n"
         f"👉 [Вернуться к викторине]({data['link']})\n\n"
@@ -388,7 +409,6 @@ async def fastqz_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Убираем кнопки
     try:
         await context.bot.edit_message_reply_markup(
             chat_id=data["chat_id"],
@@ -408,7 +428,6 @@ async def fastqz_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
         disable_web_page_preview=True
     )
     data["start_time"] = time.time()
-    # Не удаляем, чтобы можно было проходить ещё раз
 
 @antispam_decorator
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -442,7 +461,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect('quiz_users.db')
     c = conn.cursor()
-    c.execute("SELECT username, total, rank FROM users ORDER BY total DESC LIMIT 10")
+    c.execute("SELECT first_name, total, rank FROM users ORDER BY total DESC LIMIT 10")
     top_users = c.fetchall()
     conn.close()
     
@@ -507,6 +526,114 @@ async def base(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(text, parse_mode="Markdown")
 
+# ===== АДМИН-КОМАНДЫ =====
+@antispam_decorator
+async def editstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "📝 *Использование:* `/editstats <user_id> количество`\n"
+            "Пример: `/editstats 123456789 15`\n\n"
+            "⚠️ Используй числовой ID пользователя (можно получить через @userinfobot).",
+            parse_mode="Markdown"
+        )
+        return
+    
+    try:
+        target_user_id = int(context.args[0])
+        new_total = int(context.args[1])
+    except:
+        await update.message.reply_text("❌ Оба аргумента должны быть числами: ID пользователя и количество")
+        return
+    
+    new_rank = get_rank_by_score(new_total)
+    
+    conn = sqlite3.connect('quiz_users.db')
+    c = conn.cursor()
+    
+    # Получаем имя пользователя для отчёта
+    user_data = get_user_by_id(target_user_id)
+    if user_data:
+        user_name = user_data['first_name']
+        c.execute("UPDATE users SET total = ?, rank = ? WHERE user_id = ?", (new_total, new_rank, target_user_id))
+        await update.message.reply_text(f"🔄 Обновлён пользователь {user_name} (ID: {target_user_id})")
+    else:
+        # Создаём нового пользователя с временным именем "Неизвестный"
+        c.execute("INSERT INTO users (user_id, first_name, total, rank) VALUES (?, ?, ?, ?)",
+                  (target_user_id, "Неизвестный", new_total, new_rank))
+        await update.message.reply_text(f"✅ Создан пользователь с ID {target_user_id}")
+    
+    # Очищаем старые completion для этого пользователя
+    c.execute("DELETE FROM completions WHERE user_id = ?", (target_user_id,))
+    
+    # Добавляем пройденные викторины
+    quizzes = load_quizzes()
+    added = 0
+    for i, q in enumerate(quizzes):
+        if i >= new_total:
+            break
+        quiz_id = q["link"].split("/")[-1]
+        c.execute("INSERT OR IGNORE INTO completions (user_id, quiz_id, completed_at) VALUES (?, ?, ?)",
+                  (target_user_id, quiz_id, datetime.now()))
+        added += 1
+    
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ *Статистика обновлена:*\n\n"
+        f"🆔 *ID:* {target_user_id}\n"
+        f"🎯 *Викторин:* {new_total}\n"
+        f"🎖️ *Ранг:* {new_rank}\n"
+        f"📚 *Защита:* {added} викторин отмечены пройденными.",
+        parse_mode="Markdown"
+    )
+
+@antispam_decorator
+async def edittop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    conn = sqlite3.connect('quiz_users.db')
+    c = conn.cursor()
+    c.execute("SELECT user_id, first_name, total, rank FROM users ORDER BY total DESC LIMIT 10")
+    top_users = c.fetchall()
+    conn.close()
+    
+    if not top_users:
+        await update.message.reply_text("❌ Топ пуст")
+        return
+    
+    message = "🏆 *Топ-10 игроков (для админа):*\n\n"
+    for user_id, name, total, rank in top_users:
+        message += f"🆔 `{user_id}` — *{name}* — {total} викторин ({rank})\n"
+    
+    message += "\n📝 *Изменить статистику:* `/editstats <user_id> количество`\n"
+    message += "📌 Пример: `/editstats 123456789 15`\n\n"
+    message += "💡 *Как узнать ID?* Напиши пользователю в Telegram: `@userinfobot`"
+    
+    await update.message.reply_text(message, parse_mode="Markdown")
+
+@antispam_decorator
+async def backup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    if os.path.exists('quiz_users.db'):
+        with open('quiz_users.db', 'rb') as f:
+            await update.message.reply_document(
+                document=f,
+                filename='quiz_users.db',
+                caption="📦 Резервная копия базы данных"
+            )
+    else:
+        await update.message.reply_text("❌ Файл базы данных не найден")
+
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     init_db()
@@ -521,8 +648,11 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CommandHandler("base", base))
+    app.add_handler(CommandHandler("editstats", editstats))
+    app.add_handler(CommandHandler("edittop", edittop))
     app.add_handler(CallbackQueryHandler(quiz_completed, pattern="quiz_completed"))
     app.add_handler(CallbackQueryHandler(fastqz_completed, pattern="fastqz_completed"))
+    app.add_handler(CommandHandler("backup", backup))
     
     print("✅ Бот запущен!")
     app.run_polling()
