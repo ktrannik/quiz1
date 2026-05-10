@@ -234,9 +234,29 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "quiz_id": quiz_id,
         "link": q["link"],
         "date": q["date"],
-        "start_time": time.time()
+        "start_time": time.time(),
+        "message_id": None,
+        "chat_id": update.message.chat_id
     }
 
+    keyboard = [[InlineKeyboardButton("⏳ 5 секунд...", callback_data="dummy")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    sent_msg = await update.message.reply_text(
+        f"🎯 *Викторина от {q['date']}*\n\n"
+        f"👉 [Пройти викторину]({q['link']})\n\n"
+        f"✅ *Перейди по ссылке, посмотри вопрос*\n"
+        f"Через 5 секунд появится кнопка подтверждения.",
+        parse_mode="Markdown",
+        disable_web_page_preview=True,
+        reply_markup=reply_markup
+    )
+
+    user_quiz_timers[user_id]["message_id"] = sent_msg.message_id
+    user_quiz_timers[user_id]["chat_id"] = sent_msg.chat_id
+
+    asyncio.create_task(enable_button_after_delay(context, user_id))
+    
     keyboard = [[InlineKeyboardButton("⏳ Станет доступно через 5 сек", callback_data="dummy")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -288,21 +308,20 @@ async def fastqz(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     asyncio.create_task(enable_button_after_delay_fastqz(context, user_id, update.message.chat_id))
 
-async def enable_button_after_delay(context, user_id, chat_id):
+async def enable_button_after_delay(context, user_id):
     await asyncio.sleep(5)
     data = user_quiz_timers.get(user_id)
-    if data:
+    if data and data.get("message_id"):
         keyboard = [[InlineKeyboardButton("✅ Я прошёл викторину", callback_data="quiz_completed")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"🎯 *Викторина от {data['date']}*\n\n"
-                 f"👉 [Пройти викторину]({data['link']})\n\n"
-                 f"✅ Кнопка активирована! Нажми, чтобы получить +1 к рейтингу.",
-            parse_mode="Markdown",
-            disable_web_page_preview=True,
-            reply_markup=reply_markup
-        )
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=data["chat_id"],
+                message_id=data["message_id"],
+                reply_markup=reply_markup
+            )
+        except:
+            pass  # Если сообщение уже не существует, игнорируем
 
 async def enable_button_after_delay_fastqz(context, user_id, chat_id):
     await asyncio.sleep(5)
@@ -356,34 +375,59 @@ async def quiz_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     del user_quiz_timers[user_id]
 
-async def fastqz_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-
-    data = user_quiz_timers.get(f"fastqz_{user_id}")
-    if not data:
-        await query.edit_message_text("❌ Ошибка: начни викторину заново (/fastqz)")
+@antispam_decorator
+async def fastqz(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    quizzes = load_quizzes()
+    if not quizzes:
+        await update.message.reply_text("❌ Викторин пока нет")
         return
 
-    elapsed = time.time() - data["start_time"]
-    if elapsed < 5:
-        await query.edit_message_text(
-            f"⏳ Подожди ещё {5 - int(elapsed)} секунд.\n"
-            f"Это нужно, чтобы убедиться, что ты действительно перешёл по ссылке."
-        )
-        return
+    q = random.choice(quizzes)
+    quiz_id = q["link"].split("/")[-1]
+    user_id = update.effective_user.id
 
-    await query.edit_message_text(
-        f"✅ *Спасибо за прохождение, {query.from_user.first_name}!*\n\n"
-        f"👉 [Вернуться к викторине]({data['link']})\n\n"
-        f"*Рейтинг не изменился.*\n\n"
-        f"Попробуй ещё одну через /fastqz\n"
-        f"Или сыграй на рейтинг через /quiz",
+    user_quiz_timers[f"fastqz_{user_id}"] = {
+        "quiz_id": quiz_id,
+        "link": q["link"],
+        "date": q["date"],
+        "start_time": time.time(),
+        "message_id": None,
+        "chat_id": update.message.chat_id
+    }
+
+    keyboard = [[InlineKeyboardButton("⏳ 5 секунд...", callback_data="dummy")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    sent_msg = await update.message.reply_text(
+        f"⚡ *Быстрая викторина (без рейтинга)*\n\n"
+        f"🎯 *Викторина от {q['date']}*\n\n"
+        f"👉 [Пройти викторину]({q['link']})\n\n"
+        f"✅ *Перейди по ссылке*\n"
+        f"Через 5 секунд появится кнопка подтверждения.",
         parse_mode="Markdown",
-        disable_web_page_preview=True
+        disable_web_page_preview=True,
+        reply_markup=reply_markup
     )
-    data["start_time"] = time.time()
+
+    user_quiz_timers[f"fastqz_{user_id}"]["message_id"] = sent_msg.message_id
+    user_quiz_timers[f"fastqz_{user_id}"]["chat_id"] = sent_msg.chat_id
+
+    asyncio.create_task(enable_button_after_delay_fastqz(context, user_id))
+
+async def enable_button_after_delay_fastqz(context, user_id):
+    await asyncio.sleep(5)
+    data = user_quiz_timers.get(f"fastqz_{user_id}")
+    if data and data.get("message_id"):
+        keyboard = [[InlineKeyboardButton("✅ Я прошёл викторину", callback_data="fastqz_completed")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=data["chat_id"],
+                message_id=data["message_id"],
+                reply_markup=reply_markup
+            )
+        except:
+            pass
 
 @antispam_decorator
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
